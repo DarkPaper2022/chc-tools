@@ -109,7 +109,7 @@ fn parse_symbol_token(input: &str) -> IResult<&str, Atom> {
     // debug info
     map(
         take_while1(|c: char| {
-            c.is_alphabetic() || c.is_digit(10) || "+-*/=!@#$%^&?><._".contains(c)
+            c.is_alphabetic() || c.is_digit(10) || "+-*/=!@#$%^&?><._:".contains(c)
         }),
         |s: &str| Atom::Symbol(s.to_string()),
     )(input)
