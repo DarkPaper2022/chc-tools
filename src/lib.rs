@@ -4,6 +4,7 @@ use nom::character::complete::{multispace0, multispace1};
 use nom::combinator::map;
 use nom::multi::separated_list0;
 use nom::sequence::{pair, preceded};
+use nom::Err;
 use nom::{
     branch::alt,
     character::complete::{char, digit1},
@@ -12,9 +13,7 @@ use nom::{
     IResult,
 };
 use std::fs;
-use std::process::exit;
-use std::{env, vec};
-use walkdir::WalkDir;
+use std::vec;
 
 static BIT_WIDTH: usize = 64;
 static SIGNED: bool = true;
@@ -45,6 +44,7 @@ enum Atom {
     Int(i64),
     Float(f64),
     Symbol(String),
+    String(String),
 }
 
 impl Atom {
@@ -53,6 +53,7 @@ impl Atom {
             Atom::Int(i) => i.to_string(),
             Atom::Float(f) => f.to_string(),
             Atom::Symbol(s) => s.to_string(),
+            Atom::String(s) => s.to_string(),
         }
     }
 }
@@ -84,6 +85,17 @@ fn parse_float(input: &str) -> IResult<&str, Atom> {
     map_res(
         recognize(pair(digit1, pair(char('.'), digit1))),
         |s: &str| s.parse::<f64>().map(Atom::Float),
+    )(input)
+}
+
+fn parse_string(input: &str) -> IResult<&str, Atom> {
+    // 使用 `delimited` 来匹配以 '|' 开头和结尾的内容
+    map(
+        delimited(tag("\""), is_not("\""), tag("\"")), // 匹配 '|' 包围的内容
+        |s: &str| {
+            let string = format!("\"{}\"", s.to_string());
+            Atom::String(string)
+        }, // 将内容转换为 `Atom::Symbol`
     )(input)
 }
 
@@ -120,6 +132,7 @@ fn parse_atom(input: &str) -> IResult<&str, RawExpr> {
     alt((
         map(parse_int, RawExpr::Atom),
         map(parse_float, RawExpr::Atom),
+        map(parse_string, RawExpr::Atom),
         map(parse_symbol, RawExpr::Atom),
     ))(input)
 }
@@ -134,7 +147,7 @@ pub fn parse_wrapped_content(content: &str) -> Result<RawExpr, String> {
         Ok(("", expr)) => Ok(expr),
         Ok((rem, _)) => {
             // eprintln!("解析失败: 未能解析完整: {:?}", rem);
-            Err("未能解析完整".to_string())
+            Err(format!("未能解析完整: \n{}", rem).to_string())
         }
         Err(err) => {
             // eprintln!("解析失败: {:?}", err);
@@ -197,7 +210,7 @@ fn find_strange_negetive_expr(expr: &RawExpr) -> Option<&RawExpr> {
                 if let RawExpr::Atom(Atom::Symbol(op)) = &v[0] {
                     if op == "-" {
                         match &v[1] {
-                            RawExpr::Atom(Atom::Int(i)) => {}
+                            RawExpr::Atom(Atom::Int(_)) => {}
                             _ => {
                                 return Some(expr);
                             }
@@ -299,6 +312,8 @@ fn replace_operand_lia_to_bv(op: &str) -> &str {
 fn replace_operand_datalog_to_chc(op: &str) -> &str {
     return match op {
         "rule" => "assert",
+        "declare-rel" => "declare-fun",
+        "declare-var" => "declare-const",
         _ => op,
     };
 }
@@ -361,6 +376,74 @@ fn to_bv_sexpr_rec(expr: &RawExpr) -> RawExpr {
     }
 }
 
+pub fn datalog_to_chc_sexpr(expr: &RawExpr) -> Result<RawExpr, String> {
+    let m = datalog_to_chc_sexpr_rec(expr);
+    datalog_to_chc_sexpr_tail(m)
+}
+
+fn datalog_to_chc_sexpr_tail(expr: RawExpr) -> Result<RawExpr, String> {
+    // if the last is "query ..."
+    if let RawExpr::List(mut v) = expr {
+        if v.len() > 0 {
+            if let Some(RawExpr::List(v_query)) = v.pop() {
+                if v_query.len() == 2 {
+                    if let RawExpr::Atom(Atom::Symbol(op)) = &v_query[0] {
+                        if op == "query" {
+                            v.push(RawExpr::List(vec![
+                                RawExpr::Atom(Atom::Symbol("assert".to_string())),
+                                v_query[1].clone(),
+                            ]));
+                            v.push(RawExpr::List(vec![RawExpr::Atom(Atom::Symbol(
+                                "check-sat".to_string(),
+                            ))]));
+                            return Ok(RawExpr::List(v));
+                        } else {
+                            return Err("last is not query".to_string());
+                        }
+                    } else {
+                        return Err("last is not query".to_string());
+                    }
+                } else {
+                    return Err("last is not query".to_string());
+                }
+            } else {
+                return Err("last is not query".to_string());
+            }
+        } else {
+            return Err("last is not query".to_string());
+        }
+    } else {
+        return Err("last is not query".to_string());
+    }
+}
+
+fn datalog_to_chc_sexpr_rec(expr: &RawExpr) -> RawExpr {
+    match expr {
+        RawExpr::Atom(Atom::Symbol(s)) => {
+            RawExpr::Atom(Atom::Symbol(replace_operand_datalog_to_chc(s).to_string()))
+        }
+        RawExpr::List(v) => {
+            // if first is a symbol declare-rel
+            if v.len() == 3 {
+                if let RawExpr::Atom(Atom::Symbol(op)) = &v[0] {
+                    if op == "declare-rel" {
+                        return RawExpr::List(vec![
+                            RawExpr::Atom(Atom::Symbol(
+                                replace_operand_datalog_to_chc(op).to_string(),
+                            )),
+                            v[1].clone(),
+                            v[2].clone(),
+                            RawExpr::Atom(Atom::Symbol("Bool".to_string())),
+                        ]);
+                    }
+                }
+            }
+            RawExpr::List(v.iter().map(datalog_to_chc_sexpr_rec).collect())
+        }
+        _ => expr.clone(),
+    }
+}
+
 pub fn convert_chclia_2_chcbv(filename: &str) -> Result<String, String> {
     let expr = parse_by_filename(filename).map_err(|e| e)?;
     let bv_expr = to_bv_sexpr(&expr).map_err(|e| e)?;
@@ -374,4 +457,15 @@ pub fn convert_chclia_2_chcbv(filename: &str) -> Result<String, String> {
     }
 }
 
+pub fn convert_datalogchc_2_chc(filename: &str) -> Result<String, String> {
+    let expr = parse_by_filename(filename).map_err(|e| e)?;
+    let chc_expr = datalog_to_chc_sexpr(&expr).map_err(|e| e)?;
 
+    match chc_expr {
+        RawExpr::List(v) => {
+            let new_v: Vec<String> = v.into_iter().map(|e| e.to_string()).collect();
+            Ok(new_v.join("\n"))
+        }
+        _ => Err("strange chc expr.".to_string()),
+    }
+}

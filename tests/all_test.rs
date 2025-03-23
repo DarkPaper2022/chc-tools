@@ -1,7 +1,9 @@
-use chclia2chcbv::parse_wrapped_content;
+use chclia2chcbv::{convert_chclia_2_chcbv, convert_datalogchc_2_chc, parse_wrapped_content};
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
+
     use chclia2chcbv::parse_by_filename;
 
     use super::*;
@@ -456,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    fn test_one_normal_file_3() {
+    fn test_one_normal_file_with_pipe_wrapped_symbol() {
         let content = "
 (assert (forall ((main@__VERIFIER_assert.split_0 Bool)
         (main@__VERIFIER_assert_0 Bool)
@@ -574,20 +576,58 @@ mod tests {
         }
     }
 
-
     #[test]
-    fn test_one_normal_datalog_file_1() {
-      let expr = parse_by_filename("tests/data/4SB.smt2").map_err(|e| e);
-      match expr {
-          Ok(expr) => {
-              println!("解析成功: {:?}", expr);
-          }
-          Err(err) => {
-              println!("解析失败: {}", err);
-              panic!("解析失败");
-          }
-      }
-
+    fn test_one_normal_datalog_file_with_string() {
+        let expr = parse_by_filename("tests/data/4SB.smt2").map_err(|e| e);
+        match expr {
+            Ok(expr) => {
+                println!("解析成功: {:?}", expr);
+            }
+            Err(err) => {
+                println!("解析失败: {}", err);
+                panic!("解析失败");
+            }
+        }
     }
-  }
 
+    fn convert_to_dst_dir_and_solve_again(filename: &str) {
+        // use z3 to solve the file fist
+        let src_dir = "tests/data";
+        let src_filename = format!("{}/{}", src_dir, filename);
+        println!("src: {}", src_filename);
+        let solve_1 = Command::new("z3")
+            .arg(&src_filename)
+            .output()
+            .expect("failed to execute process");
+        let solve_1_result = String::from_utf8_lossy(&solve_1.stdout);
+        // convert and write to temp dir
+        let dst_dir = "tests/data/temp";
+        let dst_filename = format!("{}/{}", dst_dir, filename);
+        println!("env: {:?}", std::env::current_dir().unwrap());
+        println!("dst: {}", dst_filename);
+        let convert_result = convert_datalogchc_2_chc(&src_filename);
+        match convert_result {
+            Ok(chc) => {
+                // create the file and write
+                std::fs::create_dir_all(dst_dir).unwrap();
+                std::fs::write(&dst_filename, chc).unwrap();
+            }
+            Err(err) => {
+                panic!("Failed to convert: {:?}", filename);
+            }
+        }
+        // use z3 to solve the converted file
+        let solve_2 = Command::new("z3")
+            .arg(&dst_filename)
+            .output()
+            .expect("failed to execute process");
+        let solve_2_result = String::from_utf8_lossy(&solve_2.stdout);
+        assert_eq!(solve_1_result, solve_2_result);
+    }
+    
+    #[test]
+    fn convert_datalog_file_1() {
+        let filename = "s3_clnt.blast.01.i.cil-2.smt2";
+        convert_to_dst_dir_and_solve_again(filename);
+    }
+}
