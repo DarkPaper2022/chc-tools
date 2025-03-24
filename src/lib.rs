@@ -382,8 +382,32 @@ fn to_bv_sexpr_rec(expr: &RawExpr) -> RawExpr {
 pub fn datalog_to_chc_sexpr(expr: &RawExpr) -> Result<RawExpr, String> {
     let chc = datalog_to_chc_sexpr_rec(expr);
     let tailed = datalog_to_chc_sexpr_tail(chc)?;
-    let tagged = add_const_head(tailed, DATALOG2CHC_TAG.clone());
-    return tagged;
+    let tagged = add_const_head(tailed, DATALOG2CHC_TAG.clone())?;
+    let the_head = if specify_with_arrays(&tagged) {
+        SET_LOGIC_AUFLIA.clone()
+    } else {
+        SET_LOGIC_UFLIA.clone()
+    };
+    let logic_specified = add_const_head(tagged, the_head);
+    return logic_specified;
+}
+fn specify_with_arrays(expr: &RawExpr) -> bool {
+    match expr {
+        RawExpr::List(v) => {
+            for e in v {
+                if specify_with_arrays(e) {
+                    return true;
+                }
+            }
+        }
+        RawExpr::Atom(Atom::Symbol(s)) => {
+            if s == "Array" {
+                return true;
+            }
+        }
+        _ => {}
+    }
+    false
 }
 
 fn datalog_to_chc_sexpr_tail(expr: RawExpr) -> Result<RawExpr, String> {
@@ -484,5 +508,17 @@ const DATALOG2CHC_TAG: Lazy<RawExpr> = Lazy::new(|| {
         RawExpr::Atom(Atom::Symbol("set-info".to_string())),
         RawExpr::Atom(Atom::Symbol(":notes".to_string())),
         RawExpr::Atom(Atom::Symbol("|datalog2chc|".to_string())),
+    ])
+});
+const SET_LOGIC_UFLIA: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
+        RawExpr::Atom(Atom::Symbol("UFLIA".to_string())),
+    ])
+});
+const SET_LOGIC_AUFLIA: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
+        RawExpr::Atom(Atom::Symbol("AUFLIA".to_string())),
     ])
 });
