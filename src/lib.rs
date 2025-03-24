@@ -344,7 +344,10 @@ fn bad_expr_filter(expr: &RawExpr) -> Result<&RawExpr, String> {
 
 // @T
 fn to_bv_sexpr(expr: &RawExpr) -> Result<RawExpr, String> {
-    bad_expr_filter(expr).map(to_bv_sexpr_rec)
+    let filtered = bad_expr_filter(&expr)?;
+    let bv = to_bv_sexpr_rec(filtered);
+    let tagged = add_const_head(bv, LIA2BV_TAG.clone());
+    return tagged;
 }
 
 fn to_bv_sexpr_rec(expr: &RawExpr) -> RawExpr {
@@ -377,8 +380,10 @@ fn to_bv_sexpr_rec(expr: &RawExpr) -> RawExpr {
 }
 
 pub fn datalog_to_chc_sexpr(expr: &RawExpr) -> Result<RawExpr, String> {
-    let m = datalog_to_chc_sexpr_rec(expr);
-    datalog_to_chc_sexpr_tail(m)
+    let chc = datalog_to_chc_sexpr_rec(expr);
+    let tailed = datalog_to_chc_sexpr_tail(chc)?;
+    let tagged = add_const_head(tailed, DATALOG2CHC_TAG.clone());
+    return tagged;
 }
 
 fn datalog_to_chc_sexpr_tail(expr: RawExpr) -> Result<RawExpr, String> {
@@ -397,12 +402,12 @@ fn datalog_to_chc_sexpr_tail(expr: RawExpr) -> Result<RawExpr, String> {
                                 "check-sat".to_string(),
                             ))]));
                             return Ok(RawExpr::List(v));
-                        } 
-                    } 
-                } 
-            } 
-        } 
-    } 
+                        }
+                    }
+                }
+            }
+        }
+    }
     Err("not a normal chc".to_string())
 }
 
@@ -431,6 +436,14 @@ fn datalog_to_chc_sexpr_rec(expr: &RawExpr) -> RawExpr {
         }
         _ => expr.clone(),
     }
+}
+
+fn add_const_head(expr: RawExpr, head: RawExpr) -> Result<RawExpr, String> {
+    if let RawExpr::List(mut v) = expr {
+        v.insert(0, head);
+        return Ok(RawExpr::List(v));
+    }
+    Err("not a normal chc".to_string())
 }
 
 pub fn convert_chclia_2_chcbv(filename: &str) -> Result<String, String> {
@@ -463,13 +476,13 @@ const LIA2BV_TAG: Lazy<RawExpr> = Lazy::new(|| {
     RawExpr::List(vec![
         RawExpr::Atom(Atom::Symbol("set-info".to_string())),
         RawExpr::Atom(Atom::Symbol(":notes".to_string())),
-        RawExpr::Atom(Atom::Symbol("(|lia2bv|".to_string())),
+        RawExpr::Atom(Atom::Symbol("|lia2bv|".to_string())),
     ])
 });
 const DATALOG2CHC_TAG: Lazy<RawExpr> = Lazy::new(|| {
     RawExpr::List(vec![
         RawExpr::Atom(Atom::Symbol("set-info".to_string())),
         RawExpr::Atom(Atom::Symbol(":notes".to_string())),
-        RawExpr::Atom(Atom::Symbol("(|datalog2chc|".to_string())),
+        RawExpr::Atom(Atom::Symbol("|datalog2chc|".to_string())),
     ])
 });
