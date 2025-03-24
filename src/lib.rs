@@ -373,8 +373,11 @@ fn to_bv_sexpr_rec(expr: &RawExpr) -> RawExpr {
             RawExpr::Atom(Atom::Symbol(format!("bv{}", i))),
             RawExpr::Atom(Atom::Int(BIT_WIDTH as i64)), // warning: run for only one time
         ]),
-        _ => {
-            panic!("unexpected expr: {:?}", expr)
+        RawExpr::Atom(Atom::Float(f)) => {
+            panic!("float not supported: {:?}", f);
+        }
+        RawExpr::Atom(Atom::String(s)) => {
+            RawExpr::Atom(Atom::String(s.to_string()))
         }
     }
 }
@@ -467,7 +470,7 @@ fn add_const_head(expr: RawExpr, head: RawExpr) -> Result<RawExpr, String> {
         v.insert(0, head);
         return Ok(RawExpr::List(v));
     }
-    Err("not a normal chc".to_string())
+    Err(format!("not a normal chc: {:?}", expr).to_string())
 }
 
 pub fn convert_chclia_2_chcbv(filename: &str) -> Result<String, String> {

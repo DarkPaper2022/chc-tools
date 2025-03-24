@@ -589,6 +589,29 @@ mod tests {
             }
         }
     }
+    
+    #[test]
+    fn parse_datalog_with_string(){
+      let content = r#"
+(set-logic UFLIA)
+(set-info :notes |datalog2chc|)
+(set-info :original "/tmp/sea-b9w61hkt/jain_2-1.pp.ms.o.bc")
+(set-info :authors "SeaHorn v.14.0.0-rc0")
+(assert false)
+(check-sat)
+
+"#;
+      let expr = parse_wrapped_content(&content).map_err(|e| e);
+      match expr {
+          Ok(expr) => {
+              println!("解析成功: {:?}", expr);
+          }
+          Err(err) => {
+              println!("解析失败: {}", err);
+              panic!("解析失败");
+          }
+      }
+    }
 
     fn convert_to_dst_dir_and_solve_again(filename: &str) {
         // use z3 to solve the file fist
@@ -613,7 +636,7 @@ mod tests {
                 std::fs::write(&dst_filename, chc).unwrap();
             }
             Err(err) => {
-                panic!("Failed to convert: {:?}", filename);
+                panic!("Failed to convert: {}", err);
             }
         }
         // use z3 to solve the converted file
@@ -624,10 +647,47 @@ mod tests {
         let solve_2_result = String::from_utf8_lossy(&solve_2.stdout);
         assert_eq!(solve_1_result, solve_2_result);
     }
-    
+
+    fn convert_bv_to_dst_dir_and_solve_again(filename: &str) {
+        // use z3 to solve the file fist
+        let src_dir = "tests/data";
+        let src_filename = format!("{}/{}", src_dir, filename);
+        println!("src: {}", src_filename);
+        let solve_1 = Command::new("z3")
+            .arg(&src_filename)
+            .output()
+            .expect("failed to execute process");
+        // convert and write to temp dir
+        let dst_dir = "tests/data/temp";
+        let dst_filename = format!("{}/{}", dst_dir, filename);
+        let convert_result = convert_chclia_2_chcbv(&src_filename);
+        match convert_result {
+            Ok(chc) => {
+                // create the file and write
+                std::fs::create_dir_all(dst_dir).unwrap();
+                std::fs::write(&dst_filename, chc).unwrap();
+            }
+            Err(err) => {
+                panic!("Failed to convert: {:?}", filename);
+            }
+        }
+        // use z3 to solve the converted file
+        let solve_2 = Command::new("z3")
+            .arg(&dst_filename)
+            .output()
+            .expect("failed to execute process");
+
+    } 
+
     #[test]
     fn convert_datalog_file_1() {
         let filename = "s3_clnt.blast.01.i.cil-2.smt2";
         convert_to_dst_dir_and_solve_again(filename);
+    }
+
+    #[test]
+    fn convert_lia_file_with_meta() {
+        let filename = "meta_infos.smt2";
+        convert_bv_to_dst_dir_and_solve_again(filename);
     }
 }

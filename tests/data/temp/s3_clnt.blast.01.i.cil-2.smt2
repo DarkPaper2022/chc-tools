@@ -1,3 +1,4 @@
+(set-logic UFLIA)
 (set-info :notes |datalog2chc|)
 (set-info :original "/tmp/sea-5ywjamgx/s3_clnt.blast.01.i.cil-2.pp.ms.o.bc")
 (set-info :authors "SeaHorn v.10.0.0-rc0")
