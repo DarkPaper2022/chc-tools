@@ -4,7 +4,6 @@ use nom::character::complete::{multispace0, multispace1};
 use nom::combinator::map;
 use nom::multi::separated_list0;
 use nom::sequence::{pair, preceded};
-use nom::Err;
 use nom::{
     branch::alt,
     character::complete::{char, digit1},
@@ -12,6 +11,7 @@ use nom::{
     sequence::delimited,
     IResult,
 };
+use once_cell::sync::Lazy;
 use std::fs;
 use std::vec;
 
@@ -397,24 +397,13 @@ fn datalog_to_chc_sexpr_tail(expr: RawExpr) -> Result<RawExpr, String> {
                                 "check-sat".to_string(),
                             ))]));
                             return Ok(RawExpr::List(v));
-                        } else {
-                            return Err("last is not query".to_string());
-                        }
-                    } else {
-                        return Err("last is not query".to_string());
-                    }
-                } else {
-                    return Err("last is not query".to_string());
-                }
-            } else {
-                return Err("last is not query".to_string());
-            }
-        } else {
-            return Err("last is not query".to_string());
-        }
-    } else {
-        return Err("last is not query".to_string());
-    }
+                        } 
+                    } 
+                } 
+            } 
+        } 
+    } 
+    Err("not a normal chc".to_string())
 }
 
 fn datalog_to_chc_sexpr_rec(expr: &RawExpr) -> RawExpr {
@@ -469,3 +458,18 @@ pub fn convert_datalogchc_2_chc(filename: &str) -> Result<String, String> {
         _ => Err("strange chc expr.".to_string()),
     }
 }
+
+const LIA2BV_TAG: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-info".to_string())),
+        RawExpr::Atom(Atom::Symbol(":notes".to_string())),
+        RawExpr::Atom(Atom::Symbol("(|lia2bv|".to_string())),
+    ])
+});
+const DATALOG2CHC_TAG: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-info".to_string())),
+        RawExpr::Atom(Atom::Symbol(":notes".to_string())),
+        RawExpr::Atom(Atom::Symbol("(|datalog2chc|".to_string())),
+    ])
+});
