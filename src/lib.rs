@@ -40,7 +40,7 @@ impl RawExpr {
 }
 
 #[derive(Debug, Clone)]
-enum Atom {
+pub enum Atom {
     Int(i64),
     Float(f64),
     Symbol(String),
@@ -182,28 +182,7 @@ fn find_big_int_expr(expr: &RawExpr) -> Option<&RawExpr> {
     }
 }
 
-fn find_negetive_expr(expr: &RawExpr) -> Option<&RawExpr> {
-    match expr {
-        RawExpr::List(v) => {
-            if v.len() == 2 {
-                if let RawExpr::Atom(Atom::Symbol(op)) = &v[0] {
-                    if op == "-" {
-                        return Some(expr);
-                    }
-                }
-            }
-            for e in v {
-                if let Some(sub_expr) = find_negetive_expr(e) {
-                    return Some(sub_expr);
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-fn find_strange_negetive_expr(expr: &RawExpr) -> Option<&RawExpr> {
+fn _find_strange_negetive_expr(expr: &RawExpr) -> Option<&RawExpr> {
     match expr {
         RawExpr::List(v) => {
             if v.len() == 2 {
@@ -219,7 +198,7 @@ fn find_strange_negetive_expr(expr: &RawExpr) -> Option<&RawExpr> {
                 }
             }
             for e in v {
-                if let Some(sub_expr) = find_strange_negetive_expr(e) {
+                if let Some(sub_expr) = _find_strange_negetive_expr(e) {
                     return Some(sub_expr);
                 }
             }
@@ -466,11 +445,23 @@ fn datalog_to_chc_sexpr_rec(expr: &RawExpr) -> RawExpr {
 }
 
 fn add_const_head(expr: RawExpr, head: RawExpr) -> Result<RawExpr, String> {
-    if let RawExpr::List(mut v) = expr {
-        v.insert(0, head);
-        return Ok(RawExpr::List(v));
+    let RawExpr::List(mut v) = expr else {
+        return Err(format!("not a normal chc: {:?}", expr));
+    };
+
+    if let Some(RawExpr::List(maybe_setlogic)) = v.first() {
+        if maybe_setlogic.len() == 2 {
+            if let RawExpr::Atom(Atom::Symbol(s)) = &maybe_setlogic[0] {
+                if s == "set-logic" {
+                    v.insert(1, head);
+                    return Ok(RawExpr::List(v));
+                }
+            }
+        }
     }
-    Err(format!("not a normal chc: {:?}", expr).to_string())
+
+    v.insert(0, head);
+    Ok(RawExpr::List(v))
 }
 
 pub fn convert_chclia_2_chcbv(filename: &str) -> Result<String, String> {

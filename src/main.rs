@@ -1,4 +1,4 @@
-use std::{env, process::exit};
+use std::process::exit;
 
 use argparse::{ArgumentParser, Store};
 use chclia2chcbv::{convert_chclia_2_chcbv, convert_datalogchc_2_chc};
@@ -31,7 +31,7 @@ fn main() {
     let mut path = String::new();
     let mut usage_str = String::new();
     let usage: Usage;
-    let usage_help = format!("Usage: {} or {}",  Usage::Lia2bv, Usage::DatalogCHC2CHC);
+    let usage_help = format!("Usage: {} or {}", Usage::Lia2bv, Usage::DatalogCHC2CHC);
 
     {
         let mut ap = ArgumentParser::new();
@@ -54,7 +54,6 @@ fn main() {
             exit(1)
         }
     }
-
 
     for entry in WalkDir::new(path) {
         if let Ok(entry) = entry {

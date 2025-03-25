@@ -653,7 +653,7 @@ mod tests {
         let src_dir = "tests/data";
         let src_filename = format!("{}/{}", src_dir, filename);
         println!("src: {}", src_filename);
-        let solve_1 = Command::new("z3")
+        let _solve_1 = Command::new("z3")
             .arg(&src_filename)
             .output()
             .expect("failed to execute process");
@@ -668,11 +668,11 @@ mod tests {
                 std::fs::write(&dst_filename, chc).unwrap();
             }
             Err(err) => {
-                panic!("Failed to convert: {:?}", filename);
+                panic!("Failed to convert: {:?}\nbecause: {}", filename, err);
             }
         }
         // use z3 to solve the converted file
-        let solve_2 = Command::new("z3")
+        let _solve_2 = Command::new("z3")
             .arg(&dst_filename)
             .output()
             .expect("failed to execute process");

@@ -1,5 +1,5 @@
-(set-info :notes |lia2bv|)
 (set-logic UFBV)
+(set-info :notes |lia2bv|)
 (set-info :notes |datalog2chc|)
 (set-info :original "/tmp/sea-b9w61hkt/jain_2-1.pp.ms.o.bc")
 (set-info :authors "SeaHorn v.14.0.0-rc0")
