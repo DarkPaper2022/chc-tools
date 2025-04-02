@@ -8,6 +8,7 @@ use walkdir::WalkDir;
 enum Usage {
     Lia2bv,
     DatalogCHC2CHC,
+    Classify, // FILES smt/unknown -> smt/uflia or smt/auflia or smt/qf_uflia ...
 }
 
 impl std::fmt::Display for Usage {
@@ -15,6 +16,7 @@ impl std::fmt::Display for Usage {
         match *self {
             Usage::Lia2bv => write!(f, "l2b"),
             Usage::DatalogCHC2CHC => write!(f, "d2c"),
+            Usage::Classify => write!(f, "classify"),
         }
     }
 }
@@ -60,30 +62,38 @@ fn main() {
             if entry.path().is_dir() {
                 continue;
             }
-            if usage == Usage::Lia2bv {
-                match convert_chclia_2_chcbv(entry.path().to_str().unwrap()) {
-                    Ok(bv_expr) => {
-                        // println!("success: {}", entry.path().to_str().unwrap());
-                        println!("{}", bv_expr);
-                    }
-                    Err(err) => {
-                        eprintln!("Failed to convert: {:?}", entry.path());
-                        eprintln!("{}", err);
-                        exit(1)
-                    }
-                }
-            } else if usage == Usage::DatalogCHC2CHC {
-                match convert_datalogchc_2_chc(entry.path().to_str().unwrap()) {
-                    Ok(bv_expr) => {
-                        // println!("success: {}", entry.path().to_str().unwrap());
-                        println!("{}", bv_expr);
-                    }
-                    Err(err) => {
-                        eprintln!("Failed to convert: {:?}", entry.path());
-                        eprintln!("{}", err);
-                        exit(1)
+            match usage {
+                Usage::Lia2bv => {
+                    if let Some(path_str) = entry.path().to_str() {
+                        match convert_chclia_2_chcbv(path_str) {
+                            Ok(bv_expr) => {
+                                // println!("success: {}", entry.path().to_str().unwrap());
+                                println!("{}", bv_expr);
+                            }
+                            Err(err) => {
+                                eprintln!("Failed to convert: {:?}", entry.path());
+                                eprintln!("{}", err);
+                                exit(1)
+                            }
+                        }
                     }
                 }
+                Usage::DatalogCHC2CHC => {
+                    if let Some(path_str) = entry.path().to_str() {
+                        match convert_datalogchc_2_chc(path_str) {
+                            Ok(bv_expr) => {
+                                // println!("success: {}", entry.path().to_str().unwrap());
+                                println!("{}", bv_expr);
+                            }
+                            Err(err) => {
+                                eprintln!("Failed to convert: {:?}", entry.path());
+                                eprintln!("{}", err);
+                                exit(1)
+                            }
+                        }
+                    }
+                }
+                Usage::Classify => todo!("Classify"),
             }
         }
     }

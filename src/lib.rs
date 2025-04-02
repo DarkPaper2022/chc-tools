@@ -243,6 +243,26 @@ fn find_mod_expr(expr: &RawExpr) -> Option<&RawExpr> {
     }
 }
 
+fn find_complex_expr(expr: &RawExpr) -> Option<&RawExpr> {
+    match expr {
+        RawExpr::List(v) => {
+            for e in v {
+                if let Some(sub_expr) = find_mod_expr(e) {
+                    return Some(sub_expr);
+                }
+            }
+            None
+        }
+        RawExpr::Atom(Atom::Symbol(s)) => {
+            if s == "%" || s == "mod" || s == "div" || s == "rem" || s == "*" {
+                return Some(expr);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 // @T
 fn replace_operand_lia_to_bv(op: &str) -> &str {
     // not so good
@@ -355,9 +375,7 @@ fn to_bv_sexpr_rec(expr: &RawExpr) -> RawExpr {
         RawExpr::Atom(Atom::Float(f)) => {
             panic!("float not supported: {:?}", f);
         }
-        RawExpr::Atom(Atom::String(s)) => {
-            RawExpr::Atom(Atom::String(s.to_string()))
-        }
+        RawExpr::Atom(Atom::String(s)) => RawExpr::Atom(Atom::String(s.to_string())),
     }
 }
 
