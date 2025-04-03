@@ -1,10 +1,11 @@
 use argparse::{ArgumentParser, Store};
+use strum_macros::EnumIter;
+use strum::IntoEnumIterator; // Import the trait to bring `iter` into scope
 use chclia2chcbv::{
-    classify_file_with_io, convert_chclia_2_chcbv_with_io, convert_datalogchc_2_chc_with_io
+    classify_file_with_io, convert_chclia_2_chcbv_with_io, convert_datalogchc_2_chc_with_io,
 };
-use walkdir::WalkDir;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, EnumIter)]
 enum Usage {
     Lia2bv,
     DatalogCHC2CHC,
@@ -21,8 +22,6 @@ impl std::fmt::Display for Usage {
     }
 }
 
-
-
 fn main() {
     /*
     let args: Vec<String> = env::args().collect();
@@ -34,7 +33,7 @@ fn main() {
     */
     let mut path = String::new();
     let mut usage_str = String::new();
-    let usage_help = format!("Usage: {} or {}", Usage::Lia2bv, Usage::DatalogCHC2CHC);
+    let usage_help = format!("Usage: {}",Usage::iter().map(|u| u.to_string()).collect::<Vec<_>>().join(" | ") );
 
     {
         let mut ap = ArgumentParser::new();
@@ -59,30 +58,16 @@ fn main() {
         }
     };
 
-    for entry in WalkDir::new(path) {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => return, // 读取目录失败，直接跳过
-        };
+    let path_str = &path;
 
-        if entry.path().is_dir() {
-            return; // 跳过目录
-        }
-
-        let path_str = match entry.path().to_str() {
-            Some(s) => s,
-            None => return, // 无法转换路径，跳过
-        };
-
-        let re = match usage {
-            Usage::Lia2bv => convert_chclia_2_chcbv_with_io(path_str),
-            Usage::DatalogCHC2CHC => convert_datalogchc_2_chc_with_io(path_str),
-            Usage::Classify => classify_file_with_io(path_str),
-        };
-        if re.is_err() {
-            eprintln!("Error processing file: {}", path_str);
-            eprintln!("Error: {}", re.unwrap_err());
-            panic!();
-        }
+    let re = match usage {
+        Usage::Lia2bv => convert_chclia_2_chcbv_with_io(path_str),
+        Usage::DatalogCHC2CHC => convert_datalogchc_2_chc_with_io(path_str),
+        Usage::Classify => classify_file_with_io(path_str),
+    };
+    if re.is_err() {
+        eprintln!("Error processing file: {}", path_str);
+        eprintln!("Error: {}", re.unwrap_err());
+        panic!();
     }
 }

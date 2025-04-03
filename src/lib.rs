@@ -658,9 +658,9 @@ pub fn classify_file_with_io(path_str: &str) -> Result<(), String> {
     let file_content = classified_expr.to_file_content()?;
     // write
     let dst_file: String = fix_directory(&logic, path_str).ok_or("Failed to fix directory")?;
-    fs::create_dir_all(dst_file.clone()).map_err(|e| e.to_string())?;
-    fs::write(dst_file.clone(), file_content).map_err(|e| e.to_string())?;
-    println!("Classified file written to: {}", dst_file);
+    fs::create_dir_all(&dst_file).map_err(|e| e.to_string())?;
+    fs::write(&dst_file, file_content).map_err(|e| e.to_string())?;
+    println!("Classified file written to: {}", &dst_file);
     Ok(())
 }
 
