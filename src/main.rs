@@ -1,7 +1,9 @@
-use std::process::exit;
+use std::{fs, process::exit};
 
 use argparse::{ArgumentParser, Store};
-use chclia2chcbv::{convert_chclia_2_chcbv, convert_datalogchc_2_chc};
+use chclia2chcbv::{
+    classify_file_with_io, convert_chclia_2_chcbv_with_io, convert_datalogchc_2_chc_with_io
+};
 use walkdir::WalkDir;
 
 #[derive(Debug, PartialEq)]
@@ -21,6 +23,8 @@ impl std::fmt::Display for Usage {
     }
 }
 
+
+
 fn main() {
     /*
     let args: Vec<String> = env::args().collect();
@@ -32,7 +36,6 @@ fn main() {
     */
     let mut path = String::new();
     let mut usage_str = String::new();
-    let usage: Usage;
     let usage_help = format!("Usage: {} or {}", Usage::Lia2bv, Usage::DatalogCHC2CHC);
 
     {
@@ -47,54 +50,41 @@ fn main() {
         ap.parse_args_or_exit();
     }
 
-    match usage_str.as_str() {
-        "l2b" => usage = Usage::Lia2bv,
-        "d2c" => usage = Usage::DatalogCHC2CHC,
+    let usage = match usage_str.as_str() {
+        "l2b" => Usage::Lia2bv,
+        "d2c" => Usage::DatalogCHC2CHC,
+        "classify" => Usage::Classify,
         _ => {
             eprintln!("Invalid usage: {}", usage_str);
             eprintln!("{}", usage_help);
-            exit(1)
+            panic!();
         }
-    }
+    };
 
     for entry in WalkDir::new(path) {
-        if let Ok(entry) = entry {
-            if entry.path().is_dir() {
-                continue;
-            }
-            match usage {
-                Usage::Lia2bv => {
-                    if let Some(path_str) = entry.path().to_str() {
-                        match convert_chclia_2_chcbv(path_str) {
-                            Ok(bv_expr) => {
-                                // println!("success: {}", entry.path().to_str().unwrap());
-                                println!("{}", bv_expr);
-                            }
-                            Err(err) => {
-                                eprintln!("Failed to convert: {:?}", entry.path());
-                                eprintln!("{}", err);
-                                exit(1)
-                            }
-                        }
-                    }
-                }
-                Usage::DatalogCHC2CHC => {
-                    if let Some(path_str) = entry.path().to_str() {
-                        match convert_datalogchc_2_chc(path_str) {
-                            Ok(bv_expr) => {
-                                // println!("success: {}", entry.path().to_str().unwrap());
-                                println!("{}", bv_expr);
-                            }
-                            Err(err) => {
-                                eprintln!("Failed to convert: {:?}", entry.path());
-                                eprintln!("{}", err);
-                                exit(1)
-                            }
-                        }
-                    }
-                }
-                Usage::Classify => todo!("Classify"),
-            }
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => return, // 读取目录失败，直接跳过
+        };
+
+        if entry.path().is_dir() {
+            return; // 跳过目录
+        }
+
+        let path_str = match entry.path().to_str() {
+            Some(s) => s,
+            None => return, // 无法转换路径，跳过
+        };
+
+        let re = match usage {
+            Usage::Lia2bv => convert_chclia_2_chcbv_with_io(path_str),
+            Usage::DatalogCHC2CHC => convert_datalogchc_2_chc_with_io(path_str),
+            Usage::Classify => classify_file_with_io(path_str),
+        };
+        if re.is_err() {
+            eprintln!("Error processing file: {}", path_str);
+            eprintln!("Error: {}", re.unwrap_err());
+            panic!();
         }
     }
 }

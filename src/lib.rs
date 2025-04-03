@@ -4,6 +4,7 @@ use nom::character::complete::{multispace0, multispace1};
 use nom::combinator::map;
 use nom::multi::separated_list0;
 use nom::sequence::{pair, preceded};
+use nom::FindSubstring;
 use nom::{
     branch::alt,
     character::complete::{char, digit1},
@@ -17,6 +18,84 @@ use std::vec;
 
 static BIT_WIDTH: usize = 64;
 static SIGNED: bool = true;
+#[derive(Debug, Clone)]
+pub enum Logic {
+    QF_UFLIA,
+    UFLIA,
+    QF_AUFLIA,
+    AUFLIA,
+    QF_UFBV,
+    UFBV,
+    QF_AUFBV,
+    AUFBV,
+    ALL,
+}
+
+impl Logic {
+    fn to_head(&self) -> RawExpr {
+        match self {
+            Logic::QF_UFLIA => SET_LOGIC_QFUFLIA.clone(),
+            Logic::UFLIA => SET_LOGIC_UFLIA.clone(),
+            Logic::QF_AUFLIA => SET_LOGIC_QFAUFLIA.clone(),
+            Logic::AUFLIA => SET_LOGIC_AUFLIA.clone(),
+            Logic::QF_UFBV => SET_LOGIC_QFUFBV.clone(),
+            Logic::UFBV => SET_LOGIC_UFBV.clone(),
+            Logic::QF_AUFBV => SET_LOGIC_QFAUFBV.clone(),
+            Logic::AUFBV => SET_LOGIC_AUFBV.clone(),
+            Logic::ALL => SET_LOGIC_ALL.clone(),
+        }
+    }
+}
+
+pub fn fix_directory(logic: &Logic, unclassified_path: &str) -> Option<String> {
+    let cnt = unclassified_path.matches("unclassified").count();
+    if cnt != 1 {
+        return None;
+    }
+    let dir_name = match logic {
+        Logic::QF_UFLIA => "qf_uflia",
+        Logic::UFLIA => "uflia",
+        Logic::QF_AUFLIA => "qf_auflia",
+        Logic::AUFLIA => "auflia",
+        Logic::QF_UFBV => "qf_ufbv",
+        Logic::UFBV => "ufbv",
+        Logic::QF_AUFBV => "qf_aufbv",
+        Logic::AUFBV => "aufbv",
+        Logic::ALL => "all",
+    };
+    let classified_path = unclassified_path.replace("unclassified", dir_name);
+    return Some(classified_path);
+}
+
+pub fn fix_chc_to_pricise_logic(
+    logic: &Logic,
+    unclassified_expr: RawExpr,
+) -> Result<RawExpr, String> {
+    let RawExpr::List(mut v) = unclassified_expr else {
+        return Err(format!("not a normal chc: {:?}", unclassified_expr));
+    };
+
+    if let Some(RawExpr::List(maybe_setlogic)) = v.first() {
+        if maybe_setlogic.len() == 2 {
+            if let RawExpr::Atom(Atom::Symbol(s)) = &maybe_setlogic[0] {
+                if s == "set-logic" {
+                    v[0] = logic.to_head();
+                    return Ok(RawExpr::List(v));
+                }
+            }
+        }
+    }
+
+    Err(format!("set logic not found"))
+}
+
+#[test]
+fn fix_directory_test() {
+    let logic = Logic::QF_UFLIA;
+    let unclassified_path = "/home/someone/Documents/some_project/smt/unclassified/seahorn_trans/2024.SV-Comp/loops/for_infinite_loop_2.smt2";
+    let classified_path = fix_directory(&logic, unclassified_path);
+    assert_eq!(classified_path, Some("/home/someone/Documents/some_project/smt/qf_uflia/seahorn_trans/2024.SV-Comp/loops/for_infinite_loop_2.smt2".to_string()));
+}
 
 #[derive(Debug, Clone)]
 pub enum RawExpr {
@@ -37,13 +116,23 @@ impl RawExpr {
             ),
         }
     }
+
+    pub fn to_file_content(&self) -> Result<String, String> {
+        match self {
+            RawExpr::List(v) => {
+                let new_v: Vec<String> = v.into_iter().map(|e| e.to_string()).collect();
+                Ok(new_v.join("\n"))
+            }
+            _ => Err("strange chc expr.".to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum Atom {
     Int(i64),
     Float(f64),
-    Symbol(String),
+    Symbol(String), // TODO: use 'static &str for some cases
     String(String),
 }
 
@@ -157,8 +246,7 @@ pub fn parse_wrapped_content(content: &str) -> Result<RawExpr, String> {
 }
 
 pub fn parse_by_filename(filename: &str) -> Result<RawExpr, String> {
-    let content =
-        fs::read_to_string(filename).expect(format!("Failed to read file: {}", filename).as_str());
+    let content = fs::read_to_string(filename).map_err(|err| format!("读取文件失败:\n{}", err))?;
     parse_wrapped_content(&content)
 }
 
@@ -243,24 +331,112 @@ fn find_mod_expr(expr: &RawExpr) -> Option<&RawExpr> {
     }
 }
 
-fn find_complex_expr(expr: &RawExpr) -> Option<&RawExpr> {
+fn find_unsupported_expr(expr: &RawExpr) -> Option<&RawExpr> {
     match expr {
         RawExpr::List(v) => {
             for e in v {
-                if let Some(sub_expr) = find_mod_expr(e) {
+                if let Some(sub_expr) = find_unsupported_expr(e) {
                     return Some(sub_expr);
                 }
             }
             None
         }
         RawExpr::Atom(Atom::Symbol(s)) => {
-            if s == "%" || s == "mod" || s == "div" || s == "rem" || s == "*" {
+            if s == "mod" || s == "div" || s == "rem" || s == "*" {
                 return Some(expr);
             }
             None
         }
         _ => None,
     }
+}
+
+fn find_array_expr(expr: &RawExpr) -> Option<&RawExpr> {
+    match expr {
+        RawExpr::List(v) => {
+            for e in v {
+                if let Some(sub_expr) = find_array_expr(e) {
+                    return Some(sub_expr);
+                }
+            }
+            None
+        }
+        RawExpr::Atom(Atom::Symbol(s)) => {
+            if s == "Array" {
+                return Some(expr);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn find_quantifier_expr(expr: &RawExpr) -> Option<&RawExpr> {
+    match expr {
+        RawExpr::List(v) => {
+            for e in v {
+                if let Some(sub_expr) = find_quantifier_expr(e) {
+                    return Some(sub_expr);
+                }
+            }
+            None
+        }
+        RawExpr::Atom(Atom::Symbol(s)) => {
+            if s == "forall" || s == "exists" {
+                return Some(expr);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn find_bitvec_expr(expr: &RawExpr) -> Option<&RawExpr> {
+    match expr {
+        RawExpr::List(v) => {
+            for e in v {
+                if let Some(sub_expr) = find_bitvec_expr(e) {
+                    return Some(sub_expr);
+                }
+            }
+            None
+        }
+        RawExpr::Atom(Atom::Symbol(s)) => {
+            if s == "BitVec" {
+                return Some(expr);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+pub fn check_logic(expr: &RawExpr) -> Logic {
+    let has_quantifier = find_quantifier_expr(expr).is_some();
+    let has_array = find_array_expr(expr).is_some();
+    let has_unsupported = find_unsupported_expr(expr).is_some();
+    let has_bv = find_bitvec_expr(expr).is_some();
+    if has_unsupported {
+        return Logic::ALL;
+    }
+    if has_quantifier && has_array && !has_bv {
+        return Logic::AUFLIA;
+    } else if has_quantifier && !has_array && !has_bv {
+        return Logic::UFLIA;
+    } else if !has_quantifier && has_array && !has_bv {
+        return Logic::QF_AUFLIA;
+    } else if !has_quantifier && !has_array && !has_bv {
+        return Logic::QF_UFLIA;
+    } else if has_quantifier && has_array && has_bv {
+        return Logic::AUFBV;
+    } else if !has_quantifier && has_array && has_bv {
+        return Logic::QF_AUFBV;
+    } else if has_quantifier && !has_array && has_bv {
+        return Logic::UFBV;
+    } else if !has_quantifier && !has_array && has_bv {
+        return Logic::QF_UFBV;
+    }
+    panic!("should unreachable")
 }
 
 // @T
@@ -342,7 +518,7 @@ fn bad_expr_filter(expr: &RawExpr) -> Result<&RawExpr, String> {
 }
 
 // @T
-fn to_bv_sexpr(expr: &RawExpr) -> Result<RawExpr, String> {
+pub fn to_bv_sexpr(expr: &RawExpr) -> Result<RawExpr, String> {
     let filtered = bad_expr_filter(&expr)?;
     let bv = to_bv_sexpr_rec(filtered);
     let tagged = add_const_head(bv, LIA2BV_TAG.clone());
@@ -383,31 +559,8 @@ pub fn datalog_to_chc_sexpr(expr: &RawExpr) -> Result<RawExpr, String> {
     let chc = datalog_to_chc_sexpr_rec(expr);
     let tailed = datalog_to_chc_sexpr_tail(chc)?;
     let tagged = add_const_head(tailed, DATALOG2CHC_TAG.clone())?;
-    let the_head = if specify_with_arrays(&tagged) {
-        SET_LOGIC_AUFLIA.clone()
-    } else {
-        SET_LOGIC_UFLIA.clone()
-    };
-    let logic_specified = add_const_head(tagged, the_head);
+    let logic_specified = add_const_head(tagged, SET_LOGIC_HORN.clone());
     return logic_specified;
-}
-fn specify_with_arrays(expr: &RawExpr) -> bool {
-    match expr {
-        RawExpr::List(v) => {
-            for e in v {
-                if specify_with_arrays(e) {
-                    return true;
-                }
-            }
-        }
-        RawExpr::Atom(Atom::Symbol(s)) => {
-            if s == "Array" {
-                return true;
-            }
-        }
-        _ => {}
-    }
-    false
 }
 
 fn datalog_to_chc_sexpr_tail(expr: RawExpr) -> Result<RawExpr, String> {
@@ -482,30 +635,34 @@ fn add_const_head(expr: RawExpr, head: RawExpr) -> Result<RawExpr, String> {
     Ok(RawExpr::List(v))
 }
 
-pub fn convert_chclia_2_chcbv(filename: &str) -> Result<String, String> {
-    let expr = parse_by_filename(filename).map_err(|e| e)?;
-    let bv_expr = to_bv_sexpr(&expr).map_err(|e| e)?;
-
-    match bv_expr {
-        RawExpr::List(v) => {
-            let new_v: Vec<String> = v.into_iter().map(|e| e.to_string()).collect();
-            Ok(new_v.join("\n"))
-        }
-        _ => Err("strange bv expr.".to_string()),
-    }
+pub fn convert_chclia_2_chcbv_with_io(path_str: &str) -> Result<(), String> {
+    let expr = parse_by_filename(path_str)?;
+    let chc_expr = to_bv_sexpr(&expr)?;
+    let file_content = chc_expr.to_file_content()?;
+    println!("{}", file_content);
+    Ok(())
 }
 
-pub fn convert_datalogchc_2_chc(filename: &str) -> Result<String, String> {
-    let expr = parse_by_filename(filename).map_err(|e| e)?;
-    let chc_expr = datalog_to_chc_sexpr(&expr).map_err(|e| e)?;
+pub fn convert_datalogchc_2_chc_with_io(path_str: &str) -> Result<(), String> {
+    let expr = parse_by_filename(path_str)?;
+    let chc_expr = datalog_to_chc_sexpr(&expr)?;
+    let file_content = chc_expr.to_file_content()?;
+    println!("{}", file_content);
+    Ok(())
+}
 
-    match chc_expr {
-        RawExpr::List(v) => {
-            let new_v: Vec<String> = v.into_iter().map(|e| e.to_string()).collect();
-            Ok(new_v.join("\n"))
-        }
-        _ => Err("strange chc expr.".to_string()),
-    }
+pub fn classify_file_with_io(path_str: &str) -> Result<(), String> {
+    let expr = parse_by_filename(path_str)?;
+    let logic = check_logic(&expr);
+    // fix expr
+    let classified_expr = fix_chc_to_pricise_logic(&logic, expr)?;
+    let file_content = classified_expr.to_file_content()?;
+    // write
+    let dst_file: String = fix_directory(&logic, path_str).ok_or("Failed to fix directory")?;
+    fs::create_dir_all(dst_file.clone()).map_err(|e| e.to_string())?;
+    fs::write(dst_file.clone(), file_content).map_err(|e| e.to_string())?;
+    println!("Classified file written to: {}", dst_file);
+    Ok(())
 }
 
 const LIA2BV_TAG: Lazy<RawExpr> = Lazy::new(|| {
@@ -522,6 +679,13 @@ const DATALOG2CHC_TAG: Lazy<RawExpr> = Lazy::new(|| {
         RawExpr::Atom(Atom::Symbol("|datalog2chc|".to_string())),
     ])
 });
+
+const SET_LOGIC_QFUFLIA: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
+        RawExpr::Atom(Atom::Symbol("QF_UFLIA".to_string())),
+    ])
+});
 const SET_LOGIC_UFLIA: Lazy<RawExpr> = Lazy::new(|| {
     RawExpr::List(vec![
         RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
@@ -532,5 +696,47 @@ const SET_LOGIC_AUFLIA: Lazy<RawExpr> = Lazy::new(|| {
     RawExpr::List(vec![
         RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
         RawExpr::Atom(Atom::Symbol("AUFLIA".to_string())),
+    ])
+});
+const SET_LOGIC_ALL: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
+        RawExpr::Atom(Atom::Symbol("ALL".to_string())),
+    ])
+});
+const SET_LOGIC_QFAUFLIA: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
+        RawExpr::Atom(Atom::Symbol("QF_AUFLIA".to_string())),
+    ])
+});
+const SET_LOGIC_QFUFBV: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
+        RawExpr::Atom(Atom::Symbol("QF_UFBV".to_string())),
+    ])
+});
+const SET_LOGIC_UFBV: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
+        RawExpr::Atom(Atom::Symbol("UFBV".to_string())),
+    ])
+});
+const SET_LOGIC_AUFBV: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
+        RawExpr::Atom(Atom::Symbol("AUFBV".to_string())),
+    ])
+});
+const SET_LOGIC_QFAUFBV: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
+        RawExpr::Atom(Atom::Symbol("QF_AUFBV".to_string())),
+    ])
+});
+const SET_LOGIC_HORN: Lazy<RawExpr> = Lazy::new(|| {
+    RawExpr::List(vec![
+        RawExpr::Atom(Atom::Symbol("set-logic".to_string())),
+        RawExpr::Atom(Atom::Symbol("HORN".to_string())),
     ])
 });
