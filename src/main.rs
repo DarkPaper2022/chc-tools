@@ -1,5 +1,3 @@
-use std::{fs, process::exit};
-
 use argparse::{ArgumentParser, Store};
 use chclia2chcbv::{
     classify_file_with_io, convert_chclia_2_chcbv_with_io, convert_datalogchc_2_chc_with_io

@@ -4,7 +4,6 @@ use nom::character::complete::{multispace0, multispace1};
 use nom::combinator::map;
 use nom::multi::separated_list0;
 use nom::sequence::{pair, preceded};
-use nom::FindSubstring;
 use nom::{
     branch::alt,
     character::complete::{char, digit1},

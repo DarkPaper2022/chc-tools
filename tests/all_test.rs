@@ -1,10 +1,9 @@
-use chclia2chcbv::{ parse_wrapped_content};
+use chclia2chcbv::parse_wrapped_content;
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
 
-    use chclia2chcbv::{convert_datalogchc_2_chc_with_io, parse_by_filename};
+    use chclia2chcbv::parse_by_filename;
 
     use super::*;
 
