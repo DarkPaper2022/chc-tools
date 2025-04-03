@@ -416,9 +416,6 @@ pub fn check_logic(expr: &RawExpr) -> Logic {
     let has_array = find_array_expr(expr).is_some();
     let has_unsupported = find_unsupported_expr(expr).is_some();
     let has_bv = find_bitvec_expr(expr).is_some();
-    if has_unsupported {
-        return Logic::ALL;
-    }
     if has_quantifier && has_array && !has_bv {
         return Logic::AUFLIA;
     } else if has_quantifier && !has_array && !has_bv {
