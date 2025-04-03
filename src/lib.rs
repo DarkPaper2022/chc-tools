@@ -13,6 +13,7 @@ use nom::{
 };
 use once_cell::sync::Lazy;
 use std::fs;
+use std::path::Path;
 use std::vec;
 
 static BIT_WIDTH: usize = 64;
@@ -658,8 +659,11 @@ pub fn classify_file_with_io(path_str: &str) -> Result<(), String> {
     let file_content = classified_expr.to_file_content()?;
     // write
     let dst_file: String = fix_directory(&logic, path_str).ok_or("Failed to fix directory")?;
-    fs::create_dir_all(&dst_file).map_err(|e| e.to_string())?;
+    // get parent
+    let parent = Path::new(&dst_file).parent().ok_or("Failed to get parent directory")?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     fs::write(&dst_file, file_content).map_err(|e| e.to_string())?;
+    fs::remove_file(path_str).map_err(|e| e.to_string())?;
     println!("Classified file written to: {}", &dst_file);
     Ok(())
 }
